@@ -87,6 +87,12 @@ Prérequis Jenkins : plugin **Pipeline**, plugin **Docker Pipeline** (agents Doc
 
 Créer un job **Pipeline** pointant sur ce dépôt (SCM) avec chemin du script : `Jenkinsfile` à la racine du repo.
 
+## Workflow Git — branches protégées
+
+Les pushes **directs** sur **`main`** et **`develop`** doivent être **interdits** sur GitHub : travail sur `equipe/<prénom>` (ou autre branche), puis **pull requests**.  
+Procédure pour l’admin du dépôt : voir **`docs/github-branch-protection.md`**.  
+Hook local optionnel : dossier **`githooks/`** (voir `githooks/README.md`).
+
 ## Fichiers de configuration sensibles
 
 - `app.security.encryption-key-base64` : en production, fournir la clé via **secret manager** (Vault, KMS, variables chiffrées CI), jamais en clair dans le dépôt.

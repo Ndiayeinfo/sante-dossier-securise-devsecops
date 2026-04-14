@@ -1,0 +1,15 @@
+#!/bin/sh
+# Refuse un push si la branche locale est main ou develop (évite les erreurs de routine).
+# Les vraies règles sont sur GitHub (branch protection).
+
+protected_branches="main develop"
+current_branch=$(git symbolic-ref HEAD 2>/dev/null | sed 's|.*/||')
+
+for p in $protected_branches; do
+  if [ "$current_branch" = "$p" ]; then
+    echo "Refus: push direct sur '$p' interdit en local. Utilisez une branche (ex. equipe/...) puis une Pull Request."
+    exit 1
+  fi
+done
+
+exit 0
