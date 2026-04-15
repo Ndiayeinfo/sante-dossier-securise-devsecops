@@ -52,13 +52,15 @@ pipeline {
     stage('OWASP Dependency Check (Vulnérabilités)') {
       steps {
         script {
-          // Utilise l'ID de tes credentials Jenkins : nvd-api-key
           withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
             docker.image(env.MAVEN_IMAGE).inside {
+              // Vérification visuelle dans les logs (affichera ****)
+              sh 'echo "Vérification de la clé : ${NVD_API_KEY}"'
+              
               sh """
                 mvn org.owasp:dependency-check-maven:check \
-                -DnvdApiKey=${NVD_API_KEY} \
-                -DnvdApiDelay=8000 \
+                -DnvdApiKey="${NVD_API_KEY}" \
+                -DnvdApiDelay=10000 \
                 -DfailBuildOnCVSS=7 \
                 -DautoUpdate=true \
                 -Dformat=HTML
