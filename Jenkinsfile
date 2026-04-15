@@ -49,7 +49,7 @@ pipeline {
       }
     }
 
-    stage('OWASP Dependency Check (Vulnerabilités)') {
+    stage('OWASP Dependency Check (Vulnérabilités)') {
       steps {
         script {
           withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
@@ -57,8 +57,10 @@ pipeline {
               sh """
                 mvn org.owasp:dependency-check-maven:check \
                 -Dnvd.api.key=${NVD_API_KEY} \
-                -Dformat=HTML \
-                -DfailBuildOnCVSS=7
+                -Dnvd.api.delay=6000 \
+                -DfailBuildOnCVSS=7 \
+                -DautoUpdate=true \
+                -Dformat=HTML
               """
             }
           }
@@ -86,11 +88,11 @@ pipeline {
 
   post {
     success {
-      echo "✅ Pipeline réussi : Build + Tests + OWASP + Sonar OK"
+      echo "Pipeline réussi : Build + Tests + OWASP + Sonar OK"
     }
 
     failure {
-      echo "❌ Pipeline échoué : vérifier logs"
+      echo "Pipeline échoué : vérifier logs"
     }
   }
 }
