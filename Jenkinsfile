@@ -49,11 +49,18 @@ pipeline {
       }
     }
 
-    stage('OWASP Dependency Check (Vulnérabilités)') {
+    stage('OWASP Dependency Check (Vulnerabilités)') {
       steps {
         script {
-          docker.image(env.MAVEN_IMAGE).inside {
-            sh "mvn org.owasp:dependency-check-maven:check"
+          withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
+            docker.image(env.MAVEN_IMAGE).inside {
+              sh """
+                mvn org.owasp:dependency-check-maven:check \
+                -Dnvd.api.key=${NVD_API_KEY} \
+                -Dformat=HTML \
+                -DfailBuildOnCVSS=7
+              """
+            }
           }
         }
       }
@@ -79,7 +86,7 @@ pipeline {
 
   post {
     success {
-      echo "✅ Pipeline réussi : code build + tests + scans OK"
+      echo "✅ Pipeline réussi : Build + Tests + OWASP + Sonar OK"
     }
 
     failure {
