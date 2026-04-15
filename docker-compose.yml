@@ -1,4 +1,7 @@
+version: '3.8'
+
 services:
+
   mysql:
     image: mysql:8.4
     container_name: sante-mysql
@@ -8,8 +11,29 @@ services:
     ports:
       - "3307:3306"
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pchangeme"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+
+  sonarqube:
+    image: sonarqube:community
+    container_name: sante-sonarqube
+    ports:
+      - "9000:9000"
+    environment:
+      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
+
+  jenkins:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sante-dossier-jenkins
+    user: root
+    ports:
+      - "8098:8080"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - sonarqube
+      - mysql
+
+volumes:
+  jenkins_home:
