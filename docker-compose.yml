@@ -1,20 +1,22 @@
 version: '3.8'
 
 services:
-
   mysql:
     image: mysql:8.4
     container_name: sante-mysql
+    networks:
+      - sante-network
     environment:
       MYSQL_ROOT_PASSWORD: changeme
       MYSQL_DATABASE: sante_dossier
     ports:
       - "3311:3306"
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
 
   sonarqube:
     image: sonarqube:community
     container_name: sante-sonarqube
+    networks:
+      - sante-network
     ports:
       - "9000:9000"
     environment:
@@ -26,6 +28,8 @@ services:
       dockerfile: Dockerfile
     container_name: sante-dossier-jenkins
     user: root
+    networks:
+      - sante-network
     ports:
       - "8098:8080"
     volumes:
@@ -35,5 +39,6 @@ services:
       - sonarqube
       - mysql
 
-volumes:
-  jenkins_home:
+networks:
+  sante-network:
+    external: false
