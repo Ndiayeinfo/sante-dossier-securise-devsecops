@@ -5,6 +5,14 @@ pipeline {
     timestamps()
   }
 
+  parameters {
+    booleanParam(
+      name: 'RUN_SONAR',
+      defaultValue: false,
+      description: 'Exécuter SonarQube (SAST). Peut aussi être forcé via variable de job SONARQUBE_ENABLED=true.'
+    )
+  }
+
   environment {
     MAVEN_CLI_OPTS = '-B -Dmaven.test.failure.ignore=false'
     MAVEN_OPTS = '-Dmaven.repo.local=.m2/repository'
@@ -70,7 +78,11 @@ pipeline {
 
     stage('SAST / Qualité (SonarQube)') {
       when {
-        expression { return env.SONARQUBE_ENABLED?.toBoolean() }
+        expression {
+          def fromEnv = (env.SONARQUBE_ENABLED ?: '').trim().equalsIgnoreCase('true')
+          def fromParam = params.RUN_SONAR == true
+          return fromEnv || fromParam
+        }
       }
       steps {
         script {
