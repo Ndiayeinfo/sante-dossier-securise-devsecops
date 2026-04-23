@@ -63,9 +63,33 @@ Le référentiel *Livrables Projet Sec* (exigences fonctionnelles, specs techniq
 1. **Build & tests** : `mvn verify` (module unique à la racine).
 2. **Secrets** : Gitleaks → artefact `gitleaks.sarif` (SARIF).
 3. **SCA** : OWASP Dependency-Check (HTML sous `dependency-check/`, analyseur .NET désactivé pour ce projet Java).
-4. **SAST (optionnel)** : SonarQube si la variable d’environnement du job **`SONARQUBE_ENABLED=true`** (serveur Jenkins nommé **`SonarQube`**, identifiant de secret **`sonar-token`**).
+4. **SAST (optionnel)** : SonarQube si **`RUN_SONAR`** est coché au lancement du build **ou** si la variable du job **`SONARQUBE_ENABLED=true`** (serveur Jenkins nommé **`SonarQube`**, identifiant de secret **`sonar-token`**).
 
 Clé d’analyse Sonar : **`sante-dossier-api`** (`SONAR_PROJECT_KEY` dans le `Jenkinsfile`).
+
+### SonarQube en local (Docker)
+
+Le fichier `jenkins/docker-compose.yml` lance aussi **SonarQube Community** sur le port **9000**.
+
+1. Mémoire : SonarQube demande souvent **≥ 4 Go** de RAM pour le conteneur ; augmentez la mémoire allouée à Docker Desktop si le conteneur redémarre en boucle.
+
+2. Démarrage (réseau commun avec Jenkins pour l’URL interne `http://sonarqube:9000`) :
+
+   ```bash
+   cd jenkins && docker compose up -d
+   ```
+
+3. Interface : **http://localhost:9000** — connexion initiale **`admin` / `admin`**, puis **changement de mot de passe** imposé.
+
+4. Créer un **token utilisateur** : **My Account → Security → Generate Tokens** (ex. nom : `jenkins`), copier le token.
+
+5. **Jenkins** (une fois les plugins installés : **SonarQube Scanner**) :
+   - **Manage Jenkins → Credentials → System → Global** : ajouter un secret de type **Secret text**, identifiant **`sonar-token`**, contenu = le token Sonar.
+   - **Manage Jenkins → System → SonarQube servers** : ajouter une installation nommée exactement **`SonarQube`**, URL **`http://sonarqube:9000`** (nom du service Docker), cocher **Server authentication token** → credential **`sonar-token`**.
+
+6. Lancer le pipeline avec Sonar :
+   - cocher **`RUN_SONAR`** dans **Build with Parameters**, **ou**
+   - définir une variable d’environnement sur le job **`SONARQUBE_ENABLED=true`** (si vous utilisez le plugin *Environment Injector* ou équivalent).
 
 ### Lancer Jenkins localement (Docker)
 
@@ -76,16 +100,109 @@ docker compose up -d
 docker compose logs -f jenkins
 ```
 
-- UI : **http://localhost:8098** (le port **8098** évite le conflit avec l’API Spring Boot sur **8090**).
+- Jenkins : **http://localhost:8098** (le port **8098** évite le conflit avec l’API Spring Boot sur **8090**).
+- SonarQube : **http://localhost:9000**
 - Mot de passe initial du wizard :
 
 ```bash
 docker exec -it sante-dossier-jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 ```
 
-Prérequis Jenkins : plugin **Pipeline**, plugin **Docker Pipeline** (agents Docker), Docker Desktop avec socket monté (voir `jenkins/docker-compose.yml`).
+Prérequis Jenkins : plugins **Pipeline**, **Docker Pipeline** (agents Docker), **SonarQube Scanner** (pour l’étape Sonar et `withSonarQubeEnv`), Docker Desktop avec socket monté (voir `jenkins/docker-compose.yml`).
 
 Créer un job **Pipeline** pointant sur ce dépôt (SCM) avec chemin du script : `Jenkinsfile` à la racine du repo.
+
+### Déclencher le pipeline à chaque modification (Poll ou webhook)
+
+Deux approches courantes pour satisfaire l’exigence « build après chaque changement » :
+
+#### A) Poll SCM (simple, Jenkins interroge Git)
+
+Adapté au **PC local** : pas besoin d’exposer Jenkins sur Internet.
+
+1. Ouvrir la configuration du job Pipeline → section **Build Triggers** (Déclencheurs de build).
+2. Cocher **Poll SCM**.
+3. Saisir une planification **cron**, par exemple :
+   - `H/5 * * * *` — toutes les **5 minutes** (le `H` répartit la charge ; variante `*/5 * * * *`).
+   - `H * * * *` — toutes les heures (démo peu chargée).
+
+À chaque intervalle, Jenkins interroge le dépôt ; si un **nouveau commit** est détecté sur la branche suivie, le build démarre.
+
+#### B) Webhook GitHub / GitLab (réaction immédiate au push)
+
+GitHub ou GitLab envoie une requête HTTP à Jenkins **au moment du push**. Jenkins doit être joignable depuis Internet (port ouvert, HTTPS conseillé). **`http://localhost:8098`** ne fonctionne pas depuis les serveurs GitHub/GitLab : utilisez une **VM cloud**, ou un **tunnel** vers votre machine (**ngrok**, **Cloudflare Tunnel**, **localhost.run**, etc.) pour obtenir une URL du type `https://abc123.ngrok-free.app` pointant vers `localhost:8098`.
+
+---
+
+##### GitHub
+
+**Plugins Jenkins** : **GitHub Integration** (id `github-integration`) ou **GitHub** (`github`) selon votre version ; les deux gèrent le point d’entrée webhook standard.
+
+**1. Job Pipeline (script from SCM)**
+
+- Configurer le dépôt Git sous **Pipeline** (URL HTTPS du repo, credentials si besoin).
+- Dans **Build Triggers**, cocher **« GitHub hook trigger for GITScm polling »**.  
+  (Le libellé peut varier légèrement ; l’idée est : le webhook GitHub déclenche une **analyse SCM immédiate**, puis le build si le commit a changé.)
+
+**2. Webhook côté dépôt GitHub**
+
+- Repo → **Settings** → **Webhooks** → **Add webhook**.
+- **Payload URL** : `https://<VOTRE_JENKINS_PUBLIC>/github-webhook/`  
+  Exemple avec tunnel : `https://xxxx.ngrok-free.app/github-webhook/` (sans oublier le `/` final selon les versions).
+- **Content type** : `application/json`.
+- **Secret** (optionnel) : si vous configurez un secret dans Jenkins (**Manage Jenkins → GitHub** / réglages du plugin), mettre la même valeur ici.
+- **Which events** : au minimum **Just the push event** (ou « Let me select » → **Pushes**).
+- Enregistrer : GitHub envoie un **ping** ; la pastille du webhook doit passer au vert.
+
+**3. Credentials utiles**
+
+- **Manage Jenkins → Configure System → GitHub** : serveur GitHub + éventuellement PAT (**Personal Access Token**) avec droits **`repo`** pour que Jenkins clone les dépôts privés.
+- Pour créer le webhook **depuis** Jenkins (si le plugin le propose) : PAT avec **`admin:repo_hook`** sur le dépôt concerné.
+
+**4. Test**
+
+- `git commit --allow-empty -m "ci: test webhook"` puis `git push`.
+- Dans Jenkins : le build doit apparaître dans les **seconds** suivant le push (vérifier **Build History** et les **logs système** en cas d’échec).
+
+---
+
+##### GitLab (gitlab.com ou auto-hébergé)
+
+**Plugin Jenkins** : installer **GitLab** (GitLab Plugin) depuis le gestionnaire d’extensions.
+
+**1. Job Pipeline**
+
+- Même principe : Pipeline from SCM avec l’URL du projet GitLab.
+- **Build Triggers** : cocher **Build when a change is pushed to GitLab** (libellé exact selon version du plugin). Indiquer l’**URL du projet GitLab** et un **secret token** (chaîne que vous choisissez ; il servira aussi côté GitLab).
+
+**2. Webhook côté GitLab**
+
+- Projet → **Settings** → **Webhooks**.
+- **URL** : selon la doc du **GitLab Plugin**, en général :  
+  `https://<VOTRE_JENKINS_PUBLIC>/project/<CHEMIN_DU_JOB>`  
+  où `<CHEMIN_DU_JOB>` est le **nom complet du job** avec `/` encodés en **`%2F`**.  
+  Exemple : job nommé `dossier-sante-api` à la racine →  
+  `https://jenkins.exemple.org/project/dossier-sante-api`  
+  Exemple : job dans dossier `projet/api` →  
+  `https://jenkins.exemple.org/project/projet%2Fapi`  
+- Cocher **Push events** ; optionnel **Merge request events** si vous voulez déclencher sur les MR.
+- Coller le **même secret** que dans la config du job (champ **Secret token** du trigger GitLab).
+
+**3. Test**
+
+- **Test** → **Push events** depuis l’interface GitLab, ou push réel sur une branche suivie par le job.
+
+---
+
+##### Dépôt / livrable
+
+Conservez une **capture** de l’écran GitHub (**Webhooks**) ou GitLab (**Webhooks**) montrant l’URL et l’état vert, plus une **capture** du build Jenkins déclenché au bon moment.
+
+Si vous restez en **local sans tunnel**, préférez **Poll SCM** (section A) pour le même exigence « après chaque modification », avec un intervalle court (`H/5 * * * *`).
+
+### Rapport vulnérabilités (livrable Projet 2)
+
+Un **canevas** de rapport (structure, tableaux à remplir) est proposé dans **`docs/rapport-vulnerabilites-projet2.md`**. Complétez-le avec les extraits de **OWASP Dependency-Check**, **Gitleaks**, **SonarQube** et les actions réellement menées sur le code ou les dépendances.
 
 ## Workflow Git — branches protégées
 
