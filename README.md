@@ -64,8 +64,26 @@ Le référentiel *Livrables Projet Sec* (exigences fonctionnelles, specs techniq
 2. **Secrets** : Gitleaks → artefact `gitleaks.sarif` (SARIF).
 3. **SCA** : OWASP Dependency-Check (HTML sous `dependency-check/`, analyseur .NET désactivé pour ce projet Java).
 4. **SAST (optionnel)** : SonarQube si **`RUN_SONAR`** est coché au lancement du build **ou** si la variable du job **`SONARQUBE_ENABLED=true`** (serveur Jenkins nommé **`SonarQube`**, identifiant de secret **`sonar-token`**).
+5. **Build & push image (Docker Hub)** : build d’une image OCI via `mvn spring-boot:build-image` puis push sur Docker Hub (credentials Jenkins, aucun secret dans Git).
 
 Clé d’analyse Sonar : **`sante-dossier-api`** (`SONAR_PROJECT_KEY` dans le `Jenkinsfile`).
+
+#### Publication Docker Hub (image applicative)
+
+- Image : **`ndiayeinf/dossier-sante-api`** (variable `DOCKERHUB_REPOSITORY` dans le `Jenkinsfile`)
+- Tags poussés :
+  - **`${BUILD_NUMBER}`**
+  - **`latest`**
+- Exécution du push :
+  - **jamais** depuis une Pull Request (si job multibranch, `CHANGE_ID` détecté)
+  - autorisé sur `main`, `master` et **`equipe/youssou`** (adapter si besoin)
+
+**Credential Jenkins requis (Docker Hub)** :
+- **Manage Jenkins → Credentials → System → Global**
+- Ajouter un credential **“Username with password”**
+  - **ID** : `dockerhub` (par défaut dans `DOCKERHUB_CREDENTIALS_ID`)
+  - **Username** : votre user Docker Hub (ex. `ndiayeinf`)
+  - **Password** : un **Access Token** Docker Hub
 
 ### SonarQube en local (Docker)
 
@@ -107,6 +125,9 @@ docker compose logs -f jenkins
 ```bash
 docker exec -it sante-dossier-jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 ```
+
+> Note : si le volume Docker `jenkins_home` existe déjà (Jenkins déjà initialisé), ce fichier peut ne pas exister.  
+> Pour réinitialiser Jenkins et forcer la régénération du wizard : `docker compose down -v` puis `docker compose up -d`.
 
 Prérequis Jenkins : plugins **Pipeline**, **Docker Pipeline** (agents Docker), **SonarQube Scanner** (pour l’étape Sonar et `withSonarQubeEnv`), Docker Desktop avec socket monté (voir `jenkins/docker-compose.yml`).
 
