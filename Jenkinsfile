@@ -20,6 +20,10 @@ pipeline {
     MAVEN_IMAGE = 'maven:3.9.9-eclipse-temurin-17'
     GITLEAKS_IMAGE = 'zricethezav/gitleaks:v8.21.2'
     SONAR_PROJECT_KEY = 'sante-dossier-api'
+
+    // Docker Hub (ne pas mettre de secrets ici : utiliser un credential Jenkins)
+    DOCKERHUB_REPOSITORY = 'ndiayeinf/dossier-sante-api'
+    DOCKERHUB_CREDENTIALS_ID = 'dockerhub'
   }
 
   stages {
@@ -92,6 +96,66 @@ pipeline {
                 sh "mvn ${env.MAVEN_CLI_OPTS} -Dsonar.login=${env.SONAR_TOKEN} -Dsonar.projectKey=${env.SONAR_PROJECT_KEY} verify sonar:sonar"
               }
             }
+          }
+        }
+      }
+    }
+
+    stage('Build & Push (Docker Hub)') {
+      when {
+        expression {
+          // Ne pas pousser depuis une PR (Multibranch)
+          if ((env.CHANGE_ID ?: '').trim()) {
+            return false
+          }
+
+          // Si job non-multibranch, BRANCH_NAME peut être vide : on autorise dans ce cas.
+          def branch = (env.BRANCH_NAME ?: env.GIT_BRANCH ?: '').trim()
+          if (!branch) {
+            return true
+          }
+
+          // Push sur branches autorisées (adapter à votre stratégie)
+          def allowedBranches = [
+            'main',
+            'master',
+            'equipe/youssou'
+          ]
+
+          // Jenkins peut exposer "main", "origin/main", "refs/remotes/origin/main", etc.
+          def normalized = branch
+            .replaceFirst('^refs/remotes/', '')
+            .replaceFirst('^remotes/', '')
+            .replaceFirst('^origin/', '')
+
+          return allowedBranches.any { b ->
+            normalized == b || normalized.endsWith("/${b}")
+          }
+        }
+      }
+      steps {
+        script {
+          def imageTag = "${env.BUILD_NUMBER}"
+          def imageNameWithTag = "${env.DOCKERHUB_REPOSITORY}:${imageTag}"
+          def imageNameLatest = "${env.DOCKERHUB_REPOSITORY}:latest"
+
+          // Build OCI image via Buildpacks (Spring Boot) dans le daemon Docker de l’agent Jenkins.
+          docker.image(env.MAVEN_IMAGE).inside("-v /var/run/docker.sock:/var/run/docker.sock") {
+            sh """
+              mvn -q ${env.MAVEN_CLI_OPTS} -DskipTests \
+                spring-boot:build-image \
+                -Dspring-boot.build-image.imageName=${imageNameWithTag}
+            """.stripIndent().trim()
+          }
+
+          withCredentials([usernamePassword(credentialsId: env.DOCKERHUB_CREDENTIALS_ID, usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_TOKEN')]) {
+            sh """
+              echo "\$DOCKERHUB_TOKEN" | docker login -u "\$DOCKERHUB_USER" --password-stdin
+              docker tag ${imageNameWithTag} ${imageNameLatest}
+              docker push ${imageNameWithTag}
+              docker push ${imageNameLatest}
+              docker logout
+            """.stripIndent().trim()
           }
         }
       }
