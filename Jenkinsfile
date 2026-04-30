@@ -24,6 +24,11 @@ pipeline {
     // Docker Hub (ne pas mettre de secrets ici : utiliser un credential Jenkins)
     DOCKERHUB_REPOSITORY = 'ndiayeinf/dossier-sante-api'
     DOCKERHUB_CREDENTIALS_ID = 'dockerhub'
+
+    // Jenkins tourne en conteneur : les conteneurs Maven lancés par Docker Pipeline
+    // ne résolvent pas forcément le hostname docker-compose "sonarqube".
+    // Sur Docker Desktop, host.docker.internal permet d’atteindre le port publié (9000).
+    SONAR_HOST_URL_OVERRIDE = 'http://host.docker.internal:9000'
   }
 
   stages {
@@ -93,7 +98,15 @@ pipeline {
           withSonarQubeEnv('SonarQube') {
             withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
               docker.image(env.MAVEN_IMAGE).inside {
-                sh "mvn ${env.MAVEN_CLI_OPTS} -Dsonar.login=${env.SONAR_TOKEN} -Dsonar.projectKey=${env.SONAR_PROJECT_KEY} verify sonar:sonar"
+                // Éviter l’interpolation Groovy du secret (warning Jenkins) :
+                // on passe le token via variable d’environnement shell ($SONAR_TOKEN).
+                sh """
+                  mvn ${env.MAVEN_CLI_OPTS} \
+                    -Dsonar.host.url=${env.SONAR_HOST_URL_OVERRIDE} \
+                    -Dsonar.login=\\$SONAR_TOKEN \
+                    -Dsonar.projectKey=${env.SONAR_PROJECT_KEY} \
+                    verify sonar:sonar
+                """.stripIndent().trim()
               }
             }
           }
