@@ -20,6 +20,9 @@ pipeline {
     MAVEN_IMAGE = 'maven:3.9.9-eclipse-temurin-17'
     GITLEAKS_IMAGE = 'zricethezav/gitleaks:v8.21.2'
     SONAR_PROJECT_KEY = 'sante-dossier-api'
+    // Permet aux conteneurs lancés par Jenkins (docker.image().inside)
+    // de résoudre host.docker.internal sur Linux (Docker Desktop / WSL2).
+    DOCKER_INSIDE_OPTS = '--add-host=host.docker.internal:host-gateway'
 
     // Docker Hub (ne pas mettre de secrets ici : utiliser un credential Jenkins)
     DOCKERHUB_REPOSITORY = 'ndiayeinf/dossier-sante-api'
@@ -41,7 +44,7 @@ pipeline {
     stage('Build & Test (Maven)') {
       steps {
         script {
-          docker.image(env.MAVEN_IMAGE).inside {
+          docker.image(env.MAVEN_IMAGE).inside(env.DOCKER_INSIDE_OPTS) {
             sh "mvn -q ${env.MAVEN_CLI_OPTS} verify"
           }
         }
@@ -51,7 +54,7 @@ pipeline {
     stage('Secrets scan (Gitleaks)') {
       steps {
         script {
-          docker.image(env.GITLEAKS_IMAGE).inside("--entrypoint=''") {
+          docker.image(env.GITLEAKS_IMAGE).inside("${env.DOCKER_INSIDE_OPTS} --entrypoint=''") {
             sh "gitleaks version"
             sh "gitleaks detect --source . --no-git --report-format sarif --report-path gitleaks.sarif --redact || true"
           }
@@ -67,7 +70,7 @@ pipeline {
     stage('SCA (OWASP Dependency-Check)') {
       steps {
         script {
-          docker.image(env.MAVEN_IMAGE).inside {
+          docker.image(env.MAVEN_IMAGE).inside(env.DOCKER_INSIDE_OPTS) {
             sh """
               mvn -q org.owasp:dependency-check-maven:check \
                 -Dformat=HTML \
@@ -97,7 +100,7 @@ pipeline {
         script {
           withSonarQubeEnv('SonarQube') {
             withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-              docker.image(env.MAVEN_IMAGE).inside {
+              docker.image(env.MAVEN_IMAGE).inside(env.DOCKER_INSIDE_OPTS) {
                 // Éviter l’interpolation Groovy du secret (warning Jenkins) :
                 // on passe le token via variable d’environnement shell ($SONAR_TOKEN).
                 sh """
@@ -153,7 +156,7 @@ pipeline {
           def imageNameLatest = "${env.DOCKERHUB_REPOSITORY}:latest"
 
           // Build OCI image via Buildpacks (Spring Boot) dans le daemon Docker de l’agent Jenkins.
-          docker.image(env.MAVEN_IMAGE).inside("-v /var/run/docker.sock:/var/run/docker.sock") {
+          docker.image(env.MAVEN_IMAGE).inside("${env.DOCKER_INSIDE_OPTS} -v /var/run/docker.sock:/var/run/docker.sock") {
             sh """
               mvn -q ${env.MAVEN_CLI_OPTS} -DskipTests \
                 spring-boot:build-image \
