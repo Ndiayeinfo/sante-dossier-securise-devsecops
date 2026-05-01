@@ -1,17 +1,15 @@
 # Rapport de présentation — Projet 2 (DevSecOps) — Application santé
 
 **Projet :** `dossier-sante-api`  
-**Étudiant :** YOUSSOU (à compléter)  
 **Groupe :**
-- Youssou (à compléter)
 - Christopher Mangoumbou
-- Souleymane Sy
-- Sidi yaya traore
 - Mbamba Sene
+- Mohamed SARR
+- Sidi yaya traore
+- Souleymane Sy
 - Thierno Maadjou Sow
-**Branche :** `equipe/youssou`  
-**Commit (SHA) :** (à compléter)  
-**Date :** (à compléter)  
+- Youssou NDIAYE
+**Date :** 01/05/2026  
 
 ---
 
